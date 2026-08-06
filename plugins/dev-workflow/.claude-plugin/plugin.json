@@ -1,0 +1,13 @@
+{
+  "name": "dev-workflow",
+  "displayName": "Dev Workflow",
+  "version": "1.0.0",
+  "description": "Ticket lifecycle gates, MR self-review, multi-stack security audit, video-to-bug-report, and large-codebase map-reduce",
+  "author": {
+    "name": "Jatin Pavagadhi"
+  },
+  "homepage": "https://github.com/jatinpaspaceo/claude-workflow-kit",
+  "repository": "https://github.com/jatinpaspaceo/claude-workflow-kit",
+  "license": "MIT",
+  "keywords": ["workflow", "code-review", "security", "jira", "gitlab", "gates", "qa"]
+}

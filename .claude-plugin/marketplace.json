@@ -1,0 +1,23 @@
+{
+  "name": "workflow-kit",
+  "owner": {
+    "name": "Jatin Pavagadhi",
+    "url": "https://github.com/jatinpaspaceo"
+  },
+  "metadata": {
+    "description": "Opinionated engineering-workflow plugins for Claude Code: ticket lifecycle gates, MR self-review, security audit"
+  },
+  "plugins": [
+    {
+      "name": "dev-workflow",
+      "source": "./plugins/dev-workflow",
+      "description": "Ticket lifecycle gates that stop Claude committing, opening MRs or changing ticket status without asking, plus MR self-review, a multi-stack security audit, video-to-bug-report, and a large-codebase map-reduce skill",
+      "version": "1.0.0",
+      "author": {
+        "name": "Jatin Pavagadhi"
+      },
+      "category": "workflow",
+      "tags": ["workflow", "code-review", "security", "jira", "gitlab", "gates"]
+    }
+  ]
+}

@@ -1,0 +1,13 @@
+# never commit real credentials — only the .example
+jira.env
+*.env
+!*.env.example
+token.json
+
+# editor / backup noise
+*.bak
+*.swp
+.DS_Store
+
+# a filled-in project config belongs in the consuming repo, not here
+PROJECT.md

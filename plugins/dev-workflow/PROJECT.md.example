@@ -1,0 +1,66 @@
+# PROJECT.md — copy this to the root of the repo you work in
+
+`dev-workflow` deliberately hardcodes nothing about your branches, board or hosts. Copy this file to
+`PROJECT.md` (or `.claude/PROJECT.md`) in your own repository and fill it in. The skills read the values
+from here; where one is missing they will ask rather than guess.
+
+## Branches
+
+| Placeholder | Your value | Meaning |
+|---|---|---|
+| `FEATURE_BRANCH` | | Where day-to-day work lands, e.g. `alice-dev` |
+| `MR_TARGET_BRANCH` | | What MRs target, e.g. `develop` or `milestone-aug-2026` |
+| `INTEGRATION_BRANCH` | | First branch after merge, if you have one |
+| `STAGING_BRANCH` | | What staging deploys from |
+| `PREPROD_BRANCH` | | Pre-production sign-off branch, if you have one |
+| `PROD_BRANCH` | | What production deploys from |
+
+**Promotion:** does each step run through CI/CD, or does someone pull manually? Say which — it changes
+what may be assumed to have happened after a merge.
+
+## Git host
+
+| Placeholder | Your value |
+|---|---|
+| `GITLAB_HOST` | e.g. `https://gitlab.com` or a self-hosted URL |
+| `GITLAB_PROJECT_ID` | numeric project id, only needed for API calls that require it |
+
+Token: export `GITLAB_TOKEN`, or let it resolve from your git credential helper. **Never** put a token
+in this file, and never commit one.
+
+## Ticket tracker
+
+| Placeholder | Your value |
+|---|---|
+| `JIRA_HOST` | e.g. `https://yourcompany.atlassian.net` |
+| Ticket key prefix | e.g. `PROJ` — used in commit messages as `[PROJ-1234]` |
+
+Fill in the transition ids once, from the API — they are per-workflow and change when the board is
+edited:
+
+```bash
+curl -s -u "$JIRA_EMAIL:$JIRA_TOKEN" \
+  "$JIRA_HOST/rest/api/3/issue/<TICKET-KEY>/transitions" | jq '.transitions[]|{id,name}'
+```
+
+| Status | Transition id |
+|---|---|
+| In Progress | |
+| Code Review | |
+| Deployed to staging | |
+| Staging verified | |
+| On production | |
+| Production verified | |
+
+## Paths
+
+| Env var | Default | Meaning |
+|---|---|---|
+| `TASK_DOCS_DIR` | `$HOME/task-notes` | Where per-task notes and review docs are written |
+| `VIDEO_DIR` | `$TASK_DOCS_DIR/videos` | Where verification recordings land |
+| `REVIEWER_SLUG` | `$(whoami)` | Used in self-review filenames |
+
+## Stack
+
+Say what the project is (framework, language, test runner, linter). The skills use it to pick the right
+lint command and the right patterns to check in review — otherwise they guess from the file extensions.
