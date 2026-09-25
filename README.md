@@ -25,6 +25,13 @@ If the install summary says `Run /reload-plugins to activate.`, run that.
 | `analyze-video-issue` | Turns a screen recording of a bug into a written, reproducible issue |
 | `rlm` | Map-reduces a >100-file codebase across parallel agents without context rot |
 
+Plus two scripts for the verification video (`ticket-workflow` step 13):
+
+| Script | What it does |
+|---|---|
+| `scripts/record-verification-headless.js` | Template: title/step/summary cards over the app, voice narration with burned-in subtitles, a cursor that follows the voice (`beats`), an `.srt` beside the video, and a `⚠ TIMING` report when voice and screen drift apart |
+| `scripts/check-verification-video.sh` | Checks a video before it is attached: headless fingerprint (25 fps, viewport size), and narration unless `--silent-ok` |
+
 ### The gates
 
 `gates.md` is injected into context at **every session start** by a `SessionStart` hook, so the rules
@@ -75,6 +82,14 @@ For `mr-review` against a self-hosted GitLab, set `GITLAB_HOST` in `PROJECT.md`.
 - `jq`, `python3` **or** `perl` for the session-start hook. If none is present the hook degrades to a
   one-line notice instead of failing the session
 - `git`, and API access to your GitLab / Jira for the skills that talk to them
+- For verification videos (one-time, per machine):
+  ```bash
+  npx -y playwright@latest install chromium                  # Node + Playwright's chromium
+  sudo apt install ffmpeg                                     # (macOS: brew install ffmpeg) — needs libass
+  pip3 install --target ~/.claude-workflow-kit/pylib edge-tts # Microsoft neural voices, free, no key
+  ```
+  Overrides: `VIDEO_DIR` (default `$TASK_DOCS_DIR/videos`), `TTS_PYLIB`, `TTS_VOICE`
+  (`en-US-AriaNeural`), `PW_CORE` / `PW_CHROME`, and `LOGIN_PATH` / `LOGIN_*_SELECTOR` for your login form.
 
 ## Updating
 

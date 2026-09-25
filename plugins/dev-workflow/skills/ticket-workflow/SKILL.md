@@ -179,6 +179,34 @@ status, record the video, post the client comment. Do not re-ask at each step.
 
 1. **Exercise the real code path on staging** in a browser. Not the local app, not a code read.
 2. **Record the verification** once it works — after the fix is confirmed, not while debugging.
+   🛑 **Copy the template — never hand-roll a recorder.** It draws title/step/summary cards over the app,
+   narrates them (voice + burned-in subtitles), moves a visible cursor in time with the voice, and checks
+   the result. A bare `recordVideo` script has none of that, and tends to reach the ticket silent.
+   ```bash
+   # the recorder + checker ship in this plugin's scripts/ (installed version first, then the clone)
+   S=$(ls -d ~/.claude/plugins/cache/*/dev-workflow/*/scripts 2>/dev/null | sort -V | tail -1)
+   [ -f "$S/record-verification-headless.js" ] || S=$(ls -d ~/.claude/plugins/marketplaces/*/plugins/dev-workflow/scripts | head -1)
+   cp "$S/record-verification-headless.js" "$TASK_DOCS_DIR/<date>/record-<ticket>.js"
+   # edit ONLY TITLE / STEPS / SUMMARY — every card a `say:`; explain each step with `beats`
+   BASE_URL=... LOGIN_EMAIL=... LOGIN_PASSWORD=... node record-<ticket>.js <TICKET>   # needs network (TTS)
+   "$S/check-verification-video.sh" "$TASK_DOCS_DIR/videos/<TICKET>.mp4"                # must exit 0
+   ```
+   - **Explain with `beats`**, one sentence each: the cursor glides to `point`, outlines it and
+     types/clicks while the sentence plays. A sentence about a **result** ("the page reloads and shows
+     the error") gets `when: 'after'`, so it plays once the reload/wait is done. Keys and an example are
+     in section 3 of the template. `click` / `type` are real: on a create/edit form, make a save
+     impossible before recording.
+   - Before attaching: the run prints `AUDIO: … ✔ audible`, the checker passes, and every `⚠ TIMING`
+     line (a beat that sat silent, or outran its sentence) has been watched and fixed. Both tools
+     **fail on a silent video**.
+   - **Audio is the default, not a requirement.** When the developer asks for no audio, or says the
+     voice is saying something wrong, re-run the same script with `--no-audio` and check it with
+     `--silent-ok`. Never go silent on your own: if TTS fails, fix it or ask.
+   - Narration text goes to Microsoft's speech service (edge-tts): ticket ids and feature descriptions
+     only — never customer names, emails or record data.
+   - Each narrated run also writes `videos/srt/<video name>.srt`. A re-take is `<TICKET>-2.mp4` and never
+     overwrites. No Node on this machine? `"$S/record-verification.sh" <TICKET> --window` is the manual
+     fallback; check it with `--allow-screen-grab` and review every frame.
 3. **Attach the recording to the ticket as a comment**, not as a bare attachment, so the reader sees
    the context.
 4. **Post the client-facing comment** — 2–4 lines, opening with a real @-mention of the reporter. If

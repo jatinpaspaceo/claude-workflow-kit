@@ -12,7 +12,7 @@
       "name": "dev-workflow",
       "source": "./plugins/dev-workflow",
       "description": "Ticket lifecycle gates that stop Claude committing, opening MRs or changing ticket status without asking, plus MR self-review, a multi-stack security audit, video-to-bug-report, and a large-codebase map-reduce skill",
-      "version": "1.0.0",
+      "version": "1.1.0",
       "author": {
         "name": "Jatin Pavagadhi"
       },
