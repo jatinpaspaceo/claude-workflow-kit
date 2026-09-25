@@ -31,6 +31,7 @@ Plus two scripts for the verification video (`ticket-workflow` step 13):
 |---|---|
 | `scripts/record-verification-headless.js` | Template: title/step/summary cards over the app, voice narration with burned-in subtitles, a cursor that follows the voice (`beats`), an `.srt` beside the video, and a `⚠ TIMING` report when voice and screen drift apart |
 | `scripts/check-verification-video.sh` | Checks a video before it is attached: headless fingerprint (25 fps, viewport size), and narration unless `--silent-ok` |
+| `scripts/guard-video-attach.py` | `PreToolUse` hook on Bash: blocks an upload to an `attachments` endpoint of any video that fails the checker (exceptions: `VIDEO_SILENT_OK=1`, `VIDEO_SCREEN_GRAB_OK=1` in the command). Needs `python3` |
 
 ### The gates
 

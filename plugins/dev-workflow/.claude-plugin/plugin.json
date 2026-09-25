@@ -1,7 +1,7 @@
 {
   "name": "dev-workflow",
   "displayName": "Dev Workflow",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "description": "Ticket lifecycle gates, MR self-review, multi-stack security audit, video-to-bug-report, and large-codebase map-reduce",
   "author": {
     "name": "Jatin Pavagadhi"

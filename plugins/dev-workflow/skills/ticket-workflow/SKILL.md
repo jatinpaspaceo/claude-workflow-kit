@@ -209,6 +209,11 @@ status, record the video, post the client comment. Do not re-ask at each step.
      fallback; check it with `--allow-screen-grab` and review every frame.
 3. **Attach the recording to the ticket as a comment**, not as a bare attachment, so the reader sees
    the context.
+   🛑 **A hook checks the video before any upload runs** (`scripts/guard-video-attach.py`): a Bash
+   command that sends a video to an `…/attachments` endpoint is **blocked** if the file fails
+   `check-verification-video.sh`. Fix the video; never work around the block. Only when the developer
+   asked for a silent video, put `VIDEO_SILENT_OK=1` at the start of the command; for a person's own
+   reviewed screen recording, `VIDEO_SCREEN_GRAB_OK=1`. Use the video's absolute path.
 4. **Post the client-facing comment** — 2–4 lines, opening with a real @-mention of the reporter. If
    you are the reporter yourself, address whoever raised the underlying request.
 5. **Then move the ticket to the "staging verified" status.** This one *is* yours to assert, because it

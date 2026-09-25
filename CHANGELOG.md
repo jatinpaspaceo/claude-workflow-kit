@@ -1,5 +1,17 @@
 # Changelog
 
+## 1.2.0 — 2026-09-25
+
+### Added
+- `scripts/guard-video-attach.py` — a `PreToolUse` hook on Bash. When a command uploads a video
+  (`.mp4` / `.webm` / `.mov` / `.mkv`) to an `attachments` endpoint, it runs `check-verification-video.sh`
+  on each file and **blocks** the command if any check fails, so a silent or hand-rolled recording can't
+  reach the ticket even when the agent skipped the rule. Exceptions go in the command itself:
+  `VIDEO_SILENT_OK=1`, `VIDEO_SCREEN_GRAB_OK=1`. A failure of the guard itself never blocks
+
+### Changed
+- `ticket-workflow` step 13 — explains the block and the two exceptions
+
 ## 1.1.0 — 2026-09-25
 
 ### Added
