@@ -4,12 +4,18 @@ A Claude Code **plugin marketplace** with one plugin, `dev-workflow`: the guardr
 routines that stop an agent from committing, pushing, opening MRs or moving ticket statuses on its own —
 plus the skills that make its review and QA work actually verifiable.
 
-Two commands to install:
+Two commands to install — run each **on its own**, not pasted together on one line:
 
 ```
-/plugin marketplace add jatinpaspaceo/claude-workflow-kit
+/plugin marketplace add https://github.com/jatinpaspaceo/claude-workflow-kit.git
+```
+```
 /plugin install dev-workflow@workflow-kit
 ```
+
+The short form `/plugin marketplace add jatinpaspaceo/claude-workflow-kit` also works, but it clones
+over **SSH**, so it needs an SSH key on your GitHub account. Without one it fails with
+`Permission denied (publickey)` or `Host key verification failed` — use the `https://` form above.
 
 If the install summary says `Run /reload-plugins to activate.`, run that.
 
