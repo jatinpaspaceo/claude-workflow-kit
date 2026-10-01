@@ -197,7 +197,8 @@ status, record the video, post the client comment. Do not re-ask at each step.
      in section 3 of the template. `click` / `type` are real: on a create/edit form, make a save
      impossible before recording.
    - Before attaching: the run prints `AUDIO: … ✔ audible`, the checker passes, and every `⚠ TIMING`
-     line (a beat that sat silent, or outran its sentence) has been watched and fixed. Both tools
+     line (a beat that sat silent, or outran its sentence) has been watched and fixed, and
+     `length check: … ✔` (a `✖ … MISSING` means dropped frames, so voice and picture drift). Both tools
      **fail on a silent video**.
    - **Audio is the default, not a requirement.** When the developer asks for no audio, or says the
      voice is saying something wrong, re-run the same script with `--no-audio` and check it with

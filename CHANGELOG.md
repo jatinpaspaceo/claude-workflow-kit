@@ -1,5 +1,21 @@
 # Changelog
 
+## 1.2.2 — 2026-10-01
+
+### Fixed
+- `scripts/record-verification-headless.js` — the picture no longer runs ahead of the voice after a slow
+  page. `recordVideo` only gets a frame when the screen changes, so the seconds a page spent waiting for
+  the next page to load were **missing** from the video while the voice kept its clock time. A frame
+  heartbeat (a 1 px, near-invisible element that animates forever on every page) keeps frames coming,
+  so video time equals clock time; it also stops lost frames from making the title-card trim cut into
+  the card
+- Step 1 no longer reloads the first page: it is already open under the title card
+
+### Added
+- A length check after recording: `length check: recorded Ns, video Ns ✔`, or `✖ Ns MISSING` when more
+  than 1 s of frames is missing
+- `ticket-workflow` step 13: the length check must say `✔` before attaching
+
 ## 1.2.1 — 2026-10-01
 
 ### Fixed

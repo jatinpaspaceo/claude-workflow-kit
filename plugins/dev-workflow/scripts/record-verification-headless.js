@@ -182,6 +182,31 @@ window.__X = function () {
  * arrow in the page. Installed with addInitScript, so it is there on every page load, and it
  * keeps its last position across navigations (sessionStorage). Used by step.beats only.
  */
+/**
+ * Frame heartbeat (1.2.2). recordVideo only gets a frame when the screen changes, and a page
+ * that is waiting for the next page to load changes nothing — so those seconds were simply
+ * MISSING from the video, while the voice (placed by the clock) kept going. After one slow load
+ * the picture ran ahead of the voice for the rest of the video. A 1 px, near-invisible element
+ * that animates forever keeps the compositor producing frames, so video time = clock time.
+ */
+const HEARTBEAT_JS = `
+(function () {
+  if (window.__HB) return; window.__HB = 1;
+  var css = '@keyframes __hb{0%{opacity:.01}50%{opacity:.02}100%{opacity:.01}}'
+    + '#__hb{position:fixed;left:0;bottom:0;width:1px;height:1px;background:#000;'
+    + 'pointer-events:none;z-index:2147483647;animation:__hb .2s linear infinite}';
+  function add() {
+    if (document.getElementById('__hb') || !document.documentElement) return;
+    var st = document.createElement('style'); st.textContent = css;
+    var d = document.createElement('div'); d.id = '__hb';
+    (document.head || document.documentElement).appendChild(st);
+    document.documentElement.appendChild(d);
+  }
+  add();
+  document.addEventListener('DOMContentLoaded', add);
+})();
+`;
+
 const CURSOR_JS = `
 (function () {
   if (window.__P) return;
@@ -476,6 +501,7 @@ function writeAss(placed) {
     recordVideo: { dir: TMP_DIR, size: VIEWPORT },
     permissions: [],           // deny everything; see the geolocation note below
   });
+  await ctx.addInitScript(HEARTBEAT_JS);
   await ctx.addInitScript(CURSOR_JS);
   const page = await ctx.newPage();
   // recordVideo starts when the page is created, so anything before the title card (the first
@@ -566,11 +592,13 @@ function writeAss(placed) {
 
   // --- title card, over the first page. The goto resolves before the card is drawn, so the card
   // never covers a blank page; everything up to the card is trimmed from the video.
+  let firstPage = null;       // the URL the title card is drawn over; Step 1 reuses it
   if (STEPS[0] && STEPS[0].goto) {
     await page.goto(BASE + STEPS[0].goto, { waitUntil: 'domcontentloaded' });
     await page.evaluate(() => {
       try { navigator.geolocation.getCurrentPosition = function () {}; } catch (e) { /* noop */ }
     });
+    firstPage = STEPS[0].goto;
   }
   // the session came from the login context; if it didn't take, fail as loudly as a bad login
   if (page.url().includes(LOGIN_PATH)) throw new Error('login did not complete (session not carried over)');
@@ -578,7 +606,10 @@ function writeAss(placed) {
 
   // --- steps
   for (const step of STEPS) {
-    if (step.goto) {
+    // Step 1's page is already open under the title card, untouched, so don't load it again: a
+    // second load of a slow page was a silent stretch right after the title card.
+    const alreadyOpen = step === STEPS[0] && step.goto === firstPage;
+    if (step.goto && !alreadyOpen) {
       await page.goto(BASE + step.goto, { waitUntil: 'domcontentloaded' });
       // Address inputs use onFocus="geolocate()", which makes Chrome show a
       // "wants to Know your location" bubble that covers the form. Playwright cannot
@@ -610,10 +641,18 @@ function writeAss(placed) {
   // --- summary card
   await card(SUMMARY, 5200);
 
+  const recordedMs = Date.now() - videoStartAt;   // the clock, for the length check below
   const video = page.video();
   await ctx.close();
   await browser.close();
   const webm = await video.path();
+  // Length check: the video must be as long as the time it covered. A shortfall means frames were
+  // dropped somewhere (a stalled page), and the voice is out of step after that point.
+  const webmSec = mediaSeconds(webm);
+  const lostSec = recordedMs / 1000 - webmSec;
+  const timingLost = lostSec > 1 ? lostSec : 0;
+  console.log(`length check: recorded ${(recordedMs / 1000).toFixed(1)}s, video ${webmSec.toFixed(1)}s`
+    + (timingLost ? `  ✖ ${lostSec.toFixed(1)}s MISSING: voice and picture drift after a stall` : '  ✔'));
   console.log('webm:', webm);
 
   // --- transcode to h264 so Jira previews it. Even dimensions are mandatory for h264.
