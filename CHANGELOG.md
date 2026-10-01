@@ -1,5 +1,18 @@
 # Changelog
 
+## 1.2.1 — 2026-10-01
+
+### Fixed
+- `scripts/record-verification-headless.js` — every verification video now opens on the title card.
+  The recorder used to log in and open the first page inside the recording, so a slow first page
+  (~30 s seen in practice) became a silent intro before the title card. The login and a first load of
+  `STEPS[0].goto` now run in a separate context that does **not** record, and its session
+  (`storageState`) is handed to the recording context. Because `recordVideo` starts when the page is
+  created, the voice clock is taken when the title card is *painted*, and the raw video is trimmed by
+  the gap at transcode, so voice, subtitles and picture stay aligned however slow the page is. The run
+  prints `trim: first Ns`. A session that doesn't carry over (the page lands on `LOGIN_PATH`) fails as
+  loudly as a bad login, and `LOGIN_PATH` is now also used when waiting for the login to finish
+
 ## 1.2.0 — 2026-09-25
 
 ### Added

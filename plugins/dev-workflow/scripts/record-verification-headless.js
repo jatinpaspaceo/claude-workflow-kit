@@ -16,6 +16,9 @@
  *   node record-verification-headless.js PROJ-1234                 # voice + subtitles (default)
  *   node record-verification-headless.js PROJ-1234 --no-subtitles  # voice only
  *   node record-verification-headless.js PROJ-1234 --no-audio      # silent, no subtitles
+ *   Records: from the title card to the end of the summary card. The login runs in a separate,
+ *   non-recording browser context, and anything before the title card is painted (the first
+ *   page's load, however slow) is trimmed off, so every video opens on the title card (1.2.1).
  *   Login form: LOGIN_PATH (default /login), LOGIN_EMAIL_SELECTOR (#email),
  *   LOGIN_PASSWORD_SELECTOR (#password), LOGIN_SUBMIT_SELECTOR (button[type="submit"]).
  *
@@ -441,22 +444,60 @@ function writeAss(placed) {
   prepareNarration([TITLE, ...STEPS, SUMMARY], STEPS);
 
   const browser = await chromium.launch({ executablePath: CHROME, headless: true });
+  const LOGIN_PATH = process.env.LOGIN_PATH || '/login';
+
+  // --- login, in a context that does NOT record (1.2.1). Logging in and opening the first page
+  // inside the recording put a silent intro before the title card: on a page that takes ~30 s to
+  // load, the video opened with 30 s of no voice. Log in here, load the first page once, and hand
+  // the session to the recording context.
+  const loginCtx = await browser.newContext({ viewport: VIEWPORT, permissions: [] });
+  const loginPage = await loginCtx.newPage();
+  await loginPage.goto(BASE + LOGIN_PATH, { waitUntil: 'load' });
+  await loginPage.fill(process.env.LOGIN_EMAIL_SELECTOR || '#email', EMAIL);
+  await loginPage.fill(process.env.LOGIN_PASSWORD_SELECTOR || '#password', PASSWORD);
+  // Navigation race: a bare waitForLoadState after click() resolves too early and the
+  // next goto() dies with net::ERR_ABORTED. Wait for the URL to leave the login page.
+  await Promise.all([
+    loginPage.waitForURL((u) => !String(u).includes(LOGIN_PATH), { timeout: 45000 }),
+    loginPage.click(process.env.LOGIN_SUBMIT_SELECTOR || 'button[type="submit"]'),
+  ]);
+  await loginPage.waitForLoadState('load');
+  if (loginPage.url().includes(LOGIN_PATH)) throw new Error('login did not complete');
+  console.log('logged in:', loginPage.url());
+  if (STEPS[0] && STEPS[0].goto) {
+    await loginPage.goto(BASE + STEPS[0].goto, { waitUntil: 'domcontentloaded' });
+  }
+  const session = await loginCtx.storageState();
+  await loginCtx.close();
+
   const ctx = await browser.newContext({
     viewport: VIEWPORT,
+    storageState: session,
     recordVideo: { dir: TMP_DIR, size: VIEWPORT },
     permissions: [],           // deny everything; see the geolocation note below
   });
   await ctx.addInitScript(CURSOR_JS);
   const page = await ctx.newPage();
-  // The video starts roughly when the page is created, so clip offsets are measured from here.
-  // Taken a little late, so voices can land ~100-300ms early; fine over a 4-5s card.
-  const t0 = Date.now();
+  // recordVideo starts when the page is created, so anything before the title card (the first
+  // page's load, however slow) is still in the raw video. It is cut off at transcode: t0 is taken
+  // when the title card is PAINTED, and the webm is trimmed by (t0 - videoStartAt). Every voice
+  // offset is measured from t0, so voice, subtitles and picture stay aligned after the trim.
+  const videoStartAt = Date.now();
+  let t0 = null;
   const placed = [];                  // [{ voice, atMs }] for the audio mix and subtitles
-  const speak = (voice) => { placed.push({ voice, atMs: Date.now() - t0 }); return voice.ms + 600; };
+  const speak = (voice) => {
+    if (t0 === null) t0 = Date.now();
+    placed.push({ voice, atMs: Date.now() - t0 });
+    return voice.ms + 600;
+  };
 
   const card = async (c, hold = 4200) => {
     await page.evaluate(CARD_JS);
     await page.evaluate(([t, a, b]) => window.__C(t, a, b), [c.heading, c.line2, c.line3]);
+    if (t0 === null) {        // the title card: wait until it is painted, then start the clock
+      await page.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))));
+      t0 = Date.now();
+    }
     // never move on while the voice is talking
     if (NARRATE && c.voice) hold = Math.max(hold, speak(c.voice));
     await page.waitForTimeout(hold);
@@ -523,24 +564,16 @@ function writeAss(placed) {
     }
   };
 
-  // --- login. Not part of the story: get through it and get to the point.
-  await page.goto(BASE + (process.env.LOGIN_PATH || '/login'), { waitUntil: 'load' });
-  await page.fill(process.env.LOGIN_EMAIL_SELECTOR || '#email', EMAIL);
-  await page.fill(process.env.LOGIN_PASSWORD_SELECTOR || '#password', PASSWORD);
-  // Navigation race: a bare waitForLoadState after click() resolves too early and the
-  // next goto() dies with net::ERR_ABORTED. Wait for the URL to leave /login.
-  await Promise.all([
-    page.waitForURL((u) => !String(u).includes('/login'), { timeout: 45000 }),
-    page.click(process.env.LOGIN_SUBMIT_SELECTOR || 'button[type="submit"]'),
-  ]);
-  await page.waitForLoadState('load');
-  if (page.url().includes(process.env.LOGIN_PATH || '/login')) throw new Error('login did not complete');
-  console.log('logged in:', page.url());
-
-  // --- title card
+  // --- title card, over the first page. The goto resolves before the card is drawn, so the card
+  // never covers a blank page; everything up to the card is trimmed from the video.
   if (STEPS[0] && STEPS[0].goto) {
     await page.goto(BASE + STEPS[0].goto, { waitUntil: 'domcontentloaded' });
+    await page.evaluate(() => {
+      try { navigator.geolocation.getCurrentPosition = function () {}; } catch (e) { /* noop */ }
+    });
   }
+  // the session came from the login context; if it didn't take, fail as loudly as a bad login
+  if (page.url().includes(LOGIN_PATH)) throw new Error('login did not complete (session not carried over)');
   await card(TITLE, 5200);
 
   // --- steps
@@ -593,6 +626,10 @@ function writeAss(placed) {
     })()
     : out;
 
+  // Cut everything recorded before the title card was painted (see videoStartAt / t0).
+  const trimSec = t0 === null ? 0 : Math.max(0, (t0 - videoStartAt) / 1000);
+  console.log(`trim: first ${trimSec.toFixed(2)}s (before the title card) cut from the video`);
+  const vIn = ['-ss', trimSec.toFixed(3), '-i', webm];
   const vArgs = ['-c:v', 'libx264', '-preset', 'veryfast', '-crf', '28',
     '-pix_fmt', 'yuv420p', '-movflags', '+faststart'];
   if (NARRATE && placed.length) {
@@ -602,7 +639,7 @@ function writeAss(placed) {
     const mix = `${placed.map((_, i) => `[a${i}]`).join('')}amix=inputs=${placed.length}`
       + ':normalize=0:dropout_transition=0,apad[aout]';
     execFileSync('ffmpeg', [
-      '-y', '-i', webm, ...inputs,
+      '-y', ...vIn, ...inputs,
       '-filter_complex', [...delayed, mix].join(';'),
       '-map', '0:v', '-map', '[aout]',
       ...(SUBTITLES ? ['-vf', `subtitles=${writeAss(placed)}`] : []), ...vArgs,
@@ -611,7 +648,7 @@ function writeAss(placed) {
       final,
     ], { stdio: 'inherit' });
   } else {
-    execFileSync('ffmpeg', ['-y', '-i', webm, ...vArgs, final], { stdio: 'inherit' });
+    execFileSync('ffmpeg', ['-y', ...vIn, ...vArgs, final], { stdio: 'inherit' });
   }
 
   // --- check frame: LOOK AT THIS before attaching anything to Jira.
