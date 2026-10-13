@@ -375,7 +375,7 @@ Full lifecycle context: the `ticket-workflow` skill.
 ---
 <details open><summary><h2>🔴 Critical Issues</h2></summary>
 
-### C1. [Title] — [/abs/path/file.php:LINE](vscode://file/abs/path/file.php:LINE)
+### C1. [Title] — [file.php:LINE](repo/relative/path/file.php#LLINE)
 **Category**: Security / DB / Logic
 **Problem**: what's wrong and why it matters.
 **Current code**: ```php … ```

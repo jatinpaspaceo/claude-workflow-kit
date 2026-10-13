@@ -8,7 +8,7 @@ from here; where one is missing they will ask rather than guess.
 
 | Placeholder | Your value | Meaning |
 |---|---|---|
-| `FEATURE_BRANCH` | | Where day-to-day work lands, e.g. `alice-dev` |
+| `FEATURE_BRANCH` | | Your long-lived personal branch, if any, e.g. `alice-dev` — never an MR source; each ticket gets its own branch from `MR_TARGET_BRANCH` |
 | `MR_TARGET_BRANCH` | | What MRs target, e.g. `develop` or `milestone-aug-2026` |
 | `INTEGRATION_BRANCH` | | First branch after merge, if you have one |
 | `STAGING_BRANCH` | | What staging deploys from |

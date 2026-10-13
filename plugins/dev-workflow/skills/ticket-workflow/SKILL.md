@@ -17,7 +17,7 @@ is missing, **ask** — do not guess a branch name, a project id or a transition
 
 | Placeholder | Meaning |
 |---|---|
-| `${FEATURE_BRANCH}` | Where day-to-day work lands |
+| `${FEATURE_BRANCH}` | Your long-lived personal branch, if any — never the source of an MR |
 | `${MR_TARGET_BRANCH}` | What MRs target |
 | `${INTEGRATION_BRANCH}` `${STAGING_BRANCH}` `${PREPROD_BRANCH}` `${PROD_BRANCH}` | The promotion chain |
 | `${GITLAB_HOST}` `${GITLAB_PROJECT_ID}` | Where MRs are created |
@@ -57,9 +57,10 @@ Document findings **before** changing code.
 
 - Path: `$TASK_DOCS_DIR/<yyyy-mm-dd>/<task-name>.md`
 - Must contain a `## Plan to Implement` section.
-- Every file reference is a full absolute clickable path with a line number:
-  `[/abs/path/file.ext:319](vscode://file/abs/path/file.ext:319)`. A bare path or `file:///` will not
-  link.
+- Every file reference is a clickable link with a line number; the format depends on the host. In the
+  VS Code extension panel: relative to the workspace root, `[file.ext:319](src/file.ext#L319)`
+  (`vscode://` does nothing there). In a plain terminal: `[/abs/path/file.ext:319](vscode://file/abs/path/file.ext:319)`.
+  A bare path or `file:///` will not link.
 - Add a `Staging URL:` line for every page touched — later tooling reads this instead of guessing URLs,
   and guessed URLs ship dead links.
 
@@ -69,9 +70,9 @@ Blocking. No code until the developer has reviewed the plan and confirmed.
 
 ## Step 5 — Implement
 
-- Commits stack on `${FEATURE_BRANCH}`. Do **not** split onto per-task branches unless asked, it is a
-  long-running spike, or it is a hotfix bypassing the normal flow.
-- A justified one-off branch is named for the feature, with no developer-name prefix.
+- Work on the ticket's own branch (`<ticket-id>-<slug>`), cut fresh from `${MR_TARGET_BRANCH}`, ideally in
+  its own worktree — never on `${FEATURE_BRANCH}`, never on another ticket's branch, never in `/tmp`.
+- With no ticket, name the branch for the feature, with no developer-name prefix.
 - Schema changes go through a **migration**, with existence checks for tables, columns, indexes and
   constraints, and error handling around constraints that may fail on legacy data. Never modify the
   database directly.
@@ -117,9 +118,10 @@ the QA results, and the `Staging URL:`.
 
 Default after implementing: report status and **stop**. "Changes are ready. Want me to commit?"
 
-- "continue" / "go ahead" / "fix it" / "proceed" are **not** commit authorization. Only a literal
-  "commit" / "push" **for this change**.
-- Approval never carries forward to the next change.
+- "continue" / "go ahead" / "fix it" / "proceed" / "with recommendations" are **not** commit
+  authorization. Only a literal "commit" / "push" **for this change**.
+- Approval never carries forward to the next change. **One exception (step 9):** the commit that fixes
+  an MR's own self-review findings is covered by the "commit and push" already given for that MR.
 - Immediately before committing, re-verify `git branch --show-current` **in the same step**.
 - Commit only related files, by explicit path — split by page/feature even within one ticket.
 - **Never stage `CLAUDE.md`, `.claude/`, or any AI-assistant file.**
@@ -148,8 +150,13 @@ Default after implementing: report status and **stop**. "Changes are ready. Want
 - Set "delete source branch when merged" at creation, and delete the local copy after it merges.
 - **Then self-review immediately, before reporting the MR done** — invoke the `mr-review` skill on the
   MR URL. It pins to the MR HEAD SHA on the server rather than your possibly-stale working copy, runs
-  the altitude checklist, and emits per-finding severities plus a `Mergeable` verdict. Fix the small,
-  clear findings in a follow-up commit.
+  the altitude checklist, and emits per-finding severities plus a `Mergeable` verdict. Run it in a fresh
+  session or subagent and ask for **all** findings, ranked.
+- **Fix the findings and push them at once** — the "commit and push" already given for this MR covers the
+  commit that fixes its own self-review findings. MRs can merge within minutes, and a held fix misses the
+  MR. Prove each finding first; check the MR is still open before pushing (merged → new branch + new MR).
+  Anything beyond the findings needs its own approval.
+- **Round 2 at the new HEAD, unprompted** — even for a comment-only fix — appended to the same review doc.
 
 ## Step 10 — Move the ticket to `Code Review`
 
@@ -172,8 +179,9 @@ the MR says.
 🛑 This status is a **deploy** fact. You cannot observe a deploy, so you cannot assert it. A merged MR
 is not a deploy. Wait for the developer to say the code is on staging.
 
-When they do say it, that same message is standing approval for the rest of this flow — verify, set the
-status, record the video, post the client comment. Do not re-ask at each step.
+When they do say it, that same message is standing approval for verifying, setting the status and
+recording the video — do not re-ask at each of those steps. It does **not** cover the client comment:
+draft it, show it, and post only after the developer approves the exact text.
 
 ## Step 13 — Verify on staging → recording → comment → "staging verified"
 

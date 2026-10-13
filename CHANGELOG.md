@@ -1,5 +1,19 @@
 # Changelog
 
+## 1.3.0 — 2026-10-13
+
+### Changed
+- **Self-review fixes ship under the MR's existing approval.** The commit that fixes an MR's own
+  self-review findings no longer needs a fresh "commit"; push it as soon as it is verified (after
+  checking the MR is still open), then run round 2 at the new HEAD. A held fix can miss an MR that
+  merges within minutes. Anything beyond those findings still needs its own approval
+- **Ticket comments are always drafted first.** The deploy notification still covers verifying, the
+  status and the recording, but the comment is posted only after the developer approves its exact text
+- **One branch per ticket**, cut from `${MR_TARGET_BRANCH}`. `${FEATURE_BRANCH}` is now only a personal
+  branch and never the source of an MR
+- Self-review asks for **all** findings ranked, in a fresh session or subagent
+- File links are host-aware: workspace-relative in the VS Code extension panel, `vscode://` in a plain terminal
+
 ## 1.2.2 — 2026-10-01
 
 ### Fixed
