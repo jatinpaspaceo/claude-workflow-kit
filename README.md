@@ -93,10 +93,13 @@ For `mr-review` against a self-hosted GitLab, set `GITLAB_HOST` in `PROJECT.md`.
   ```bash
   npx -y playwright@latest install chromium                  # Node + Playwright's chromium
   sudo apt install ffmpeg                                     # (macOS: brew install ffmpeg) — needs libass
-  pip3 install --target ~/.claude-workflow-kit/pylib edge-tts # Microsoft neural voices, free, no key
+  pip3 install --upgrade --target ~/.claude-workflow-kit/pylib edge-tts # Microsoft neural voices, free, no key
   ```
   Overrides: `VIDEO_DIR` (default `$TASK_DOCS_DIR/videos`), `TTS_PYLIB`, `TTS_VOICE`
-  (`en-US-AriaNeural`), `PW_CORE` / `PW_CHROME`, and `LOGIN_PATH` / `LOGIN_*_SELECTOR` for your login form.
+  (`en-US-AvaMultilingualNeural`), `PW_CORE` / `PW_CHROME`, and `LOGIN_PATH` / `LOGIN_*_SELECTOR` for your login form.
+  Narration failing with `403`? Microsoft refuses outdated edge-tts versions: re-run the `pip3 install --upgrade` line above.
+  Voice speed: `TTS_RATE` (default `+10%`). Silent stretches over 3 s are fast-forwarded (`--no-fast-forward` to
+  keep them). Each run prints a chapter list for the ticket comment (also saved as `srt/<video>.chapters.txt`).
 
 ## Updating
 

@@ -92,7 +92,16 @@ const TTS_PYLIB = process.env.TTS_PYLIB
   || [path.join(__dirname, '.pylib'), path.join(os.homedir(), '.claude-workflow-kit/pylib')]
     .find((d) => fs.existsSync(d))
   || path.join(os.homedir(), '.claude-workflow-kit/pylib');
-const TTS_VOICE = process.env.TTS_VOICE || 'en-US-AriaNeural';
+// Ava (Multilingual) since 1.4.0: noticeably more conversational than the older Aria. Override per run
+// with TTS_VOICE, e.g. en-US-AndrewMultilingualNeural (male) or en-US-AriaNeural (the old one).
+const TTS_VOICE = process.env.TTS_VOICE || 'en-US-AvaMultilingualNeural';
+// Voice speed (1.4.0): a little faster than edge-tts' default reads naturally. TTS_RATE="+0%" for normal.
+const TTS_RATE = process.env.TTS_RATE || '+10%';
+// Fast-forward (1.4.0): a stretch with no voice longer than FF_MIN_MS (a page loading, a hold after an
+// action) plays fast, shrunk to FF_TO_MS, so viewers don't sit through dead air. --no-fast-forward = off.
+const FAST_FORWARD = !process.argv.includes('--no-fast-forward');
+const FF_MIN_MS = 3000;
+const FF_TO_MS = 1500;
 // check-verification-video.sh accepts an audio stream ONLY when this tag is present, so room
 // noise or a desktop recorder's audio is still rejected. Keep the two in sync.
 const NARRATION_TAG = 'verify-tts-narration';
@@ -170,10 +179,12 @@ window.__C = function (t, a, b) {
     + '<div style="color:#c9c9c9;font-size:17px;line-height:1.5;">' + (b || '') + '</div>';
   document.body.appendChild(d);
   var p = document.getElementById('__vp'); if (p) p.style.visibility = 'hidden';
+  var b = document.getElementById('__vs'); if (b) b.style.visibility = 'hidden';
 };
 window.__X = function () {
   var o = document.getElementById('__vc'); if (o) o.remove();
   var p = document.getElementById('__vp'); if (p) p.style.visibility = 'visible';
+  var b = document.getElementById('__vs'); if (b) b.style.visibility = 'visible';
 };
 `;
 
@@ -244,15 +255,35 @@ const CURSOR_JS = `
       requestAnimationFrame(function () { r.style.transform = 'scale(2.2)'; r.style.opacity = '0'; });
       setTimeout(function () { r.remove(); }, 600);
     },
-    mark: function (e) {   // amber outline on the beat's element; the previous beat's is removed
+    mark: function (e) {   // amber outline + spotlight on the beat's element; the previous one is cleared
       document.querySelectorAll('[data-vh]').forEach(function (o) {
         o.style.outline = o.getAttribute('data-vh'); o.removeAttribute('data-vh');
+        o.style.boxShadow = o.getAttribute('data-vhs') || ''; o.removeAttribute('data-vhs');
       });
       if (!e) return;
       e.setAttribute('data-vh', e.style.outline || '');
+      e.setAttribute('data-vhs', e.style.boxShadow || '');
       e.style.outline = '3px solid #efad52'; e.style.outlineOffset = '2px';
+      // spotlight (1.4.0): dim the rest of the page a little so the eye lands on this element
+      e.style.boxShadow = '0 0 0 100vmax rgba(0,0,0,.28)';
     },
   };
+  // "Step 2 of 3" badge (1.4.0), top right; kept in sessionStorage so it survives page loads
+  function badge() {
+    var t = ''; try { t = sessionStorage.getItem('__vs') || ''; } catch (e) {}
+    var b = document.getElementById('__vs');
+    if (!t) { if (b) b.remove(); return; }
+    if (!b && document.body) {
+      b = document.createElement('div'); b.id = '__vs';
+      b.style.cssText = 'position:fixed;top:14px;right:18px;z-index:2147483645;pointer-events:none;'
+        + 'background:rgba(26,26,26,.82);color:#efad52;font:600 15px Arial,Helvetica,sans-serif;'
+        + 'padding:6px 12px;border-radius:14px;box-shadow:0 2px 6px rgba(0,0,0,.3);';
+      document.body.appendChild(b);
+    }
+    if (b) b.textContent = t;
+  }
+  window.__S = { set: function (t) { try { sessionStorage.setItem('__vs', t || ''); } catch (e) {} badge(); } };
+  document.addEventListener('DOMContentLoaded', badge);
   // after a page load, bring the cursor back where it was (only once beats have used it)
   document.addEventListener('DOMContentLoaded', function () { if (pos()) el(); });
 })();
@@ -280,21 +311,31 @@ Array.from(document.querySelectorAll('.detail-view tr')).forEach(function (r) {
 //
 //     WRITING THE NARRATION — explain, don't label. Someone who never read the ticket should
 //     understand the video with the sound on, or from the subtitles with it muted.
+//     WRITE IT THE WAY YOU'D SAY IT to a colleague sitting next to you (1.4.0). Stiff, announcer
+//     wording is half of what makes a voice sound robotic:
+//       - contractions: "it's", "wasn't", "we'll", "here's", not "it is", "was not"
+//       - talk to the viewer: "let's open…", "you can see…", "I'm logged in as…"
+//       - one idea per sentence; a comma where you'd pause for breath
+//       - ✖ "This video verifies ticket PROJ 1234. It was verified on staging."
+//         ✔ "Okay, this is ticket PROJ 1234. I'm checking it on staging."
 //       TITLE.say     what was asked for, who asked / why, where it is being verified.
 //       step.say      what we are about to do, and what the viewer should expect to see.
 //       step.sayAfter what is on screen right now: name the highlighted thing, say what it
 //                     proves, and mention the before-state for a bug fix.
 //       SUMMARY.say   each thing that was proven, and that nothing was left behind.
-//     2-3 short sentences each (~15s of voice). Short sentences = readable subtitles.
+//     TITLE.say and SUMMARY.say: at most 2 short sentences (~6-8 s) — get to Step 1 fast (1.4.0).
+//     step.say / sayAfter / beats: 1-2 short sentences each. Short sentences = readable subtitles.
+//     SUMMARY.checks: ['Role change saves', 'Revoked stays revoked'] shows a ✔ list on the summary
+//     card, so the outcome reads in 3 seconds even with the sound off.
 // ---------------------------------------------------------------------------
 
 const TITLE = {
   heading: `${TICKET} &mdash; <feature name>`,
   line2: 'What was requested, in one line',
   line3: 'Scope &middot; where this was verified',
-  say: `This video verifies ticket ${TICKET.replace('-', ' ')}. `
-    + 'The request was to <say what was asked for, in plain words>. '
-    + 'It was verified on <environment>, logged in as <role>, and each step below shows one part of the change.',
+  say: `Okay, this is ticket ${TICKET.replace('-', ' ')}. `
+    + 'The ask was to <say what was asked for, in plain words>. '
+    + "I'm checking it on <environment>, logged in as <role>, and each step shows one part of the change.",
 };
 
 const STEPS = [
@@ -306,9 +347,9 @@ const STEPS = [
     // Runs after the card is removed. Highlight what the step is proving.
     show: highlightRows(['<Row label>', '<Another label>']),
     hold: 5200,
-    say: 'In step one, we open <the page>. '
-      + 'We are checking that <the thing this step proves>, because <why it matters to the user>.',
-    sayAfter: 'Here is <the page>. The highlighted <rows or fields> show <what is now correct>. '
+    say: "First, let's open <the page>. "
+      + "We're checking that <the thing this step proves>, because <why it matters to the user>.",
+    sayAfter: "Here's <the page>. You can see the highlighted <rows or fields> now show <what is now correct>. "
       + 'Before this change, <what used to happen>.',
   },
   // ... more steps. Anything Playwright can do is fair game — see the example
@@ -344,8 +385,8 @@ const SUMMARY = {
   heading: 'All items verified',
   line2: 'One line listing what was proven',
   line3: 'Any test data created was deleted &mdash; environment left as found',
-  say: 'That completes the verification. <List each thing that was proven, one short sentence each>. '
-    + 'No test data was left behind, so the environment is exactly as it was before.',
+  say: "And that's it. <List each thing that was proven, one short sentence each>. "
+    + "Nothing was left behind, so the environment's exactly as it was before.",
 };
 
 // ---------------------------------------------------------------------------
@@ -373,7 +414,7 @@ let clipN = 0;
 /** One mp3 + its cues for a piece of text. */
 function makeVoice(text) {
   const base = path.join(TMP_DIR, `say-${clipN++}`);
-  execFileSync('python3', ['-m', 'edge_tts', '--voice', TTS_VOICE, '--text', text,
+  execFileSync('python3', ['-m', 'edge_tts', '--voice', TTS_VOICE, `--rate=${TTS_RATE}`, '--text', text,
     '--write-media', `${base}.mp3`, '--write-subtitles', `${base}.srt`],
   { env: { ...process.env, PYTHONPATH: TTS_PYLIB }, stdio: ['ignore', 'ignore', 'pipe'] });
   return { clip: `${base}.mp3`, ms: Math.ceil(mediaSeconds(`${base}.mp3`) * 1000),
@@ -398,9 +439,17 @@ function prepareNarration(cards, steps) {
   } catch (e) {
     // Stop, don't fall back (changed 2026-09-25): a silent video should only exist when someone
     // asked for one. The old fallback printed one ⚠ line that was easy to scroll past.
-    console.error('✖ narration failed:', String(e.stderr || e.message).trim().split('\n').pop());
-    console.error(`  edge-tts needs network (run with the sandbox off) and a .pylib (looked in ${TTS_PYLIB}).`);
-    console.error('  Install once: pip3 install --target ~/.claude-workflow-kit/pylib edge-tts');
+    const why = String(e.stderr || e.message);
+    console.error('✖ narration failed:', why.trim().split('\n').pop());
+    if (/\b403\b|WSServerHandshakeError/.test(why)) {
+      // Microsoft's speech service refuses outdated edge-tts versions (7.2.8 was refused from
+      // 2026-10-14 on). Upgrading is the fix; nothing else is wrong.
+      console.error('  Microsoft refused this edge-tts version (403). Upgrade it:');
+      console.error(`    pip3 install --upgrade --target ${TTS_PYLIB} edge-tts`);
+    } else {
+      console.error(`  edge-tts needs network (run with the sandbox off) and a .pylib (looked in ${TTS_PYLIB}).`);
+      console.error('  Install once: pip3 install --upgrade --target ~/.claude-workflow-kit/pylib edge-tts');
+    }
     console.error('  For a silent video on purpose, re-run with --no-audio.');
     process.exit(1);
   }
@@ -439,13 +488,19 @@ function writeSrt(placed, mp4) {
   return file;
 }
 
-/** ASS subtitle file: white text on a dark box, bottom centre, sized for the viewport. */
-function writeAss(placed) {
+/**
+ * ASS subtitle file: white text on a dark box, bottom centre, sized for the viewport. A sentence spoken
+ * while the drawn cursor is in the bottom third of the screen goes to the TOP instead (1.4.0), so it
+ * never hides the button being clicked.
+ */
+function writeAss(placed, cursorLog = []) {
+  const cursorY = (t) => { let y = null; cursorLog.forEach((c) => { if (c.atMs <= t) y = c.y; }); return y; };
+  const style = (c) => { const y = cursorY(c.s); return y !== null && y > VIEWPORT.height * 2 / 3 ? 'SubTop' : 'Sub'; };
   const ts = (ms) => { const cs = Math.max(0, Math.round(ms / 10));
     const h = Math.floor(cs / 360000); const m = Math.floor(cs / 6000) % 60;
     const sec = Math.floor(cs / 100) % 60; const c = cs % 100;
     return `${h}:${String(m).padStart(2, '0')}:${String(sec).padStart(2, '0')}.${String(c).padStart(2, '0')}`; };
-  const lines = timeline(placed).map((c) => `Dialogue: 0,${ts(c.s)},${ts(c.e)},Sub,,0,0,0,,`
+  const lines = timeline(placed).map((c) => `Dialogue: 0,${ts(c.s)},${ts(c.e)},${style(c)},,0,0,0,,`
     + c.text.replace(/[{}]/g, ''));
   const file = path.join(TMP_DIR, 'narration.ass');
   fs.writeFileSync(file, [
@@ -457,7 +512,9 @@ function writeAss(placed) {
       + 'Shadow, Alignment, MarginL, MarginR, MarginV, Encoding',
     // BorderStyle 3 = opaque box; the box colour is OutlineColour (&HAABBGGRR, 00 = opaque).
     'Style: Sub,DejaVu Sans,30,&H00FFFFFF,&H00FFFFFF,&H50000000,&H50000000,0,0,0,0,100,100,0,0,'
-      + '3,10,0,2,160,160,38,1', '',
+      + '3,10,0,2,160,160,38,1',
+    'Style: SubTop,DejaVu Sans,30,&H00FFFFFF,&H00FFFFFF,&H50000000,&H50000000,0,0,0,0,100,100,0,0,'
+      + '3,10,0,8,160,160,70,1', '',
     '[Events]', 'Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text',
     ...lines, '',
   ].join('\n'));
@@ -511,6 +568,8 @@ function writeAss(placed) {
   const videoStartAt = Date.now();
   let t0 = null;
   const placed = [];                  // [{ voice, atMs }] for the audio mix and subtitles
+  const chapters = [];                // [{ atMs, title }] — one per card, for the chapter list
+  const cursorLog = [];               // [{ atMs, y }] — where the drawn cursor is, for subtitle placement
   const speak = (voice) => {
     if (t0 === null) t0 = Date.now();
     placed.push({ voice, atMs: Date.now() - t0 });
@@ -519,11 +578,16 @@ function writeAss(placed) {
 
   const card = async (c, hold = 4200) => {
     await page.evaluate(CARD_JS);
-    await page.evaluate(([t, a, b]) => window.__C(t, a, b), [c.heading, c.line2, c.line3]);
+    const line2 = c.checks ? c.checks.map((x) => `✔ ${x}`).join('<br>') : c.line2;
+    await page.evaluate(([t, a, b]) => window.__C(t, a, b), [c.heading, line2, c.line3]);
     if (t0 === null) {        // the title card: wait until it is painted, then start the clock
       await page.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))));
       t0 = Date.now();
     }
+    const plain = String(c.heading || '').replace(/<[^>]+>/g, '').replace(/&mdash;/g, '—')
+      .replace(/&[a-z]+;/g, ' ').replace(/\s+/g, ' ').trim();
+    chapters.push({ atMs: Date.now() - t0,
+      title: c === TITLE ? 'Intro' : c === SUMMARY ? 'Result' : plain });
     // never move on while the voice is talking
     if (NARRATE && c.voice) hold = Math.max(hold, speak(c.voice));
     await page.waitForTimeout(hold);
@@ -557,16 +621,18 @@ function writeAss(placed) {
         await target.scrollIntoViewIfNeeded({ timeout: 10000 });
         const box = await target.boundingBox();
         if (box) {
-          await page.evaluate(([x, y]) => window.__P.move(x, y, 700),
-            [box.x + Math.min(box.width / 2, 60), box.y + box.height / 2]);
-          await page.waitForTimeout(750);
+          const y = box.y + box.height / 2;
+          await page.evaluate(([x, yy]) => window.__P.move(x, yy, 500),
+            [box.x + Math.min(box.width / 2, 60), y]);
+          cursorLog.push({ atMs: Date.now() - t0, y });
+          await page.waitForTimeout(550);
         }
         if (b.highlight !== false) await target.evaluate((e) => window.__P.mark(e));
       }
       if (target && b.type != null) {
         await target.click();
         await target.fill('');
-        await page.keyboard.type(String(b.type), { delay: 90 });
+        await page.keyboard.type(String(b.type), { delay: 40 });
       }
       if (target && b.click) {
         await page.evaluate(() => window.__P.click());
@@ -620,6 +686,8 @@ function writeAss(placed) {
     }
     await card(step);
     await uncard();
+    await page.evaluate((t) => window.__S && window.__S.set(t),
+      `Step ${STEPS.indexOf(step) + 1} of ${STEPS.length}`);
     if (step.beats) await runBeats(step.beats, `Step ${STEPS.indexOf(step) + 1}`);
     if (step.act) await step.act(page);
     if (step.show) await page.evaluate(step.show);
@@ -632,6 +700,7 @@ function writeAss(placed) {
         try { sessionStorage.removeItem('__vp'); } catch (e) { /* noop */ }
         const p = document.getElementById('__vp'); if (p) p.remove();
       });
+      cursorLog.push({ atMs: Date.now() - t0, y: null });
       // and park the real (invisible) mouse on the empty right edge, or its hover — a tooltip, a
       // highlighted row — carries over onto the next step's page
       await page.mouse.move(VIEWPORT.width - 6, VIEWPORT.height / 2);
@@ -639,6 +708,7 @@ function writeAss(placed) {
   }
 
   // --- summary card
+  await page.evaluate(() => window.__S && window.__S.set(''));
   await card(SUMMARY, 5200);
 
   const recordedMs = Date.now() - videoStartAt;   // the clock, for the length check below
@@ -671,17 +741,82 @@ function writeAss(placed) {
   const vIn = ['-ss', trimSec.toFixed(3), '-i', webm];
   const vArgs = ['-c:v', 'libx264', '-preset', 'veryfast', '-crf', '28',
     '-pix_fmt', 'yuv420p', '-movflags', '+faststart'];
+  // Fast-forward: find stretches with no voice longer than FF_MIN_MS and speed them up so each lasts
+  // FF_TO_MS. Voice stretches play at normal speed, so every clip, subtitle, chapter and cursor time is
+  // simply moved earlier by the time saved before it (remap).
+  let segments = null;
+  let remap = (t) => t;
+  const endMs = Math.max(0, (webmSec - trimSec) * 1000);   // the video's length after the trim
+  if (NARRATE && placed.length && FAST_FORWARD) {
+    const spans = placed.map((p) => [p.atMs, p.atMs + p.voice.ms + 300]).sort((a, b) => a[0] - b[0]);
+    const voiced = [];
+    spans.forEach(([a, b]) => {
+      if (voiced.length && a <= voiced[voiced.length - 1][1]) {
+        voiced[voiced.length - 1][1] = Math.max(voiced[voiced.length - 1][1], b);
+      } else voiced.push([a, b]);
+    });
+    const segs = [];
+    let at = 0;
+    const addGap = (a, b) => {
+      if (b - a > FF_MIN_MS) {
+        segs.push({ from: a + 300, to: b - 300, speed: (b - a - 600) / (FF_TO_MS - 600) });
+      }
+    };
+    voiced.forEach(([a, b]) => { if (a > at) addGap(at, a); at = Math.max(at, b); });
+    if (endMs > at) addGap(at, endMs);
+    // turn the fast stretches into a full list of segments covering the whole video
+    segments = [];
+    let cur = 0;
+    segs.forEach((g) => {
+      if (g.from > cur) segments.push({ from: cur, to: g.from, speed: 1 });
+      segments.push(g);
+      cur = g.to;
+    });
+    if (endMs > cur) segments.push({ from: cur, to: endMs, speed: 1 });
+    if (segs.length) {
+      remap = (t) => {
+        let out = 0;
+        for (const sg of segments) {
+          if (t <= sg.from) break;
+          out += (Math.min(t, sg.to) - sg.from) / sg.speed;
+        }
+        return Math.round(out);
+      };
+      const saved = segs.reduce((n, g) => n + (g.to - g.from) - (g.to - g.from) / g.speed, 0);
+      console.log(`fast-forward: ${segs.length} silent stretch(es) sped up, ${(saved / 1000).toFixed(1)}s saved`);
+      placed.forEach((p) => { p.atMs = remap(p.atMs); });
+      chapters.forEach((c) => { c.atMs = remap(c.atMs); });
+      cursorLog.forEach((c) => { c.atMs = remap(c.atMs); });
+    } else segments = null;
+  }
   if (NARRATE && placed.length) {
     // Each clip delayed to its card's start, mixed without level-halving, padded to video length.
     const inputs = placed.flatMap((p) => ['-i', p.voice.clip]);
     const delayed = placed.map((p, i) => `[${i + 1}:a]adelay=${p.atMs}|${p.atMs}[a${i}]`);
+    // Pad the audio to the video's exact final length. An endless apad relies on -shortest to stop,
+    // which fails ("No space left on device") once the video comes out of a filter.
     const mix = `${placed.map((_, i) => `[a${i}]`).join('')}amix=inputs=${placed.length}`
-      + ':normalize=0:dropout_transition=0,apad[aout]';
+      + `:normalize=0:dropout_transition=0,apad=whole_dur=${(remap(endMs) / 1000).toFixed(3)}[aout]`;
+    // Video: the fast-forward segments (split → trim → speed → concat → 25 fps), then subtitles.
+    const vf = [];
+    let vlabel = '0:v';
+    if (segments) {
+      // One time-remapping expression on the single stream (no split/concat, which makes ffmpeg buffer
+      // whole segments and fail with "No space left on device"): new time = sum over the segments of
+      // the time spent in each, divided by its speed. fps=25 then drops the squeezed frames.
+      const expr = segments.map((sg) => `clip(T-${(sg.from / 1000).toFixed(3)},0,`
+        + `${((sg.to - sg.from) / 1000).toFixed(3)})/${sg.speed.toFixed(4)}`).join('+');
+      vf.push(`[0:v]setpts='(${expr})/TB',fps=25[vc]`);
+      vlabel = 'vc';
+    }
+    if (SUBTITLES) {
+      vf.push(`[${vlabel}]subtitles=${writeAss(placed, cursorLog)}[vout]`);
+      vlabel = 'vout';
+    }
     execFileSync('ffmpeg', [
       '-y', ...vIn, ...inputs,
-      '-filter_complex', [...delayed, mix].join(';'),
-      '-map', '0:v', '-map', '[aout]',
-      ...(SUBTITLES ? ['-vf', `subtitles=${writeAss(placed)}`] : []), ...vArgs,
+      '-filter_complex', [...vf, ...delayed, mix].join(';'),
+      '-map', vlabel === '0:v' ? '0:v' : `[${vlabel}]`, '-map', '[aout]', ...vArgs,
       '-c:a', 'aac', '-b:a', '96k', '-shortest',
       '-metadata', `comment=${NARRATION_TAG}`,
       final,
@@ -708,6 +843,16 @@ function writeAss(placed) {
   }
 
   const srt = NARRATE && placed.length ? writeSrt(placed, final) : null;
+  // Chapter list: paste it into the Jira comment so reviewers can jump to a step.
+  const mmss = (t) => `${Math.floor(t / 60000)}:${String(Math.floor(t / 1000) % 60).padStart(2, '0')}`;
+  const chapterText = chapters.map((c) => `${mmss(c.atMs)} ${c.title}`).join('\n');
+  let chaptersFile = null;
+  if (chapters.length) {
+    const dir = path.join(path.dirname(final), 'srt');
+    fs.mkdirSync(dir, { recursive: true });
+    chaptersFile = path.join(dir, `${path.basename(final, '.mp4')}.chapters.txt`);
+    fs.writeFileSync(chaptersFile, `${chapterText}\n`);
+  }
 
   const kb = Math.round(fs.statSync(final).size / 1024);
   console.log(`\nVIDEO: ${final}  (${kb} KB)`);
@@ -718,6 +863,7 @@ function writeAss(placed) {
   }
   console.log(`FRAME: ${frame}  <-- open it and confirm it shows the app`);
   if (srt) console.log(`SRT:   ${srt}`);
+  if (chaptersFile) console.log(`CHAPTERS (for the Jira comment): ${chaptersFile}\n${chapterText}`);
   console.log('\nNext: attach to Jira, VERIFY the attachment landed, then post a 2-4 line comment.');
 })().catch((e) => {
   console.error('FAILED:', e.message);

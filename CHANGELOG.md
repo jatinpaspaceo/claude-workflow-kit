@@ -1,5 +1,27 @@
 # Changelog
 
+## 1.4.0 — 2026-10-14
+
+### Changed
+- `scripts/record-verification-headless.js` — default voice `en-US-AriaNeural` → `en-US-AvaMultilingualNeural`
+  (more conversational; override with `TTS_VOICE`). The writing guide and example lines now ask for
+  narration written the way you'd say it (contractions, "let's…", one idea per sentence)
+- `ticket-workflow` step 13 and README: the same writing rule; install edge-tts with `--upgrade`
+
+### Fixed
+- When Microsoft's speech service refuses the installed edge-tts (`403`; 7.2.8 was refused from
+  2026-10-14), the recorder prints the exact upgrade command. Upgrade once:
+  `pip3 install --upgrade --target ~/.claude-workflow-kit/pylib edge-tts`
+
+### Added
+- Shorter, easier-to-follow videos: silent stretches over 3 s are fast-forwarded to 1.5 s (`--no-fast-forward`
+  to keep them), voice 10% faster (`TTS_RATE`), a chapter list printed and saved for the ticket comment, a
+  "Step 2 of 3" badge, a spotlight on the highlighted element, subtitles that move to the top while the cursor is
+  low on the screen, `SUMMARY.checks: [...]` as a ✔ list, faster typing and cursor; title/summary at most 2
+  sentences in the writing guide
+- The audio is padded to the video's exact length, so ffmpeg no longer fails with "No space left on device"
+  when the video goes through a filter
+
 ## 1.3.0 — 2026-10-13
 
 ### Changed
