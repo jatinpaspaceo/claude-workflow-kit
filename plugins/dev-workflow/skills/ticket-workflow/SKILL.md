@@ -215,6 +215,8 @@ draft it, show it, and post only after the developer approves the exact text.
      one idea per sentence (template section 3). Stiff, announcer wording is what sounds robotic.
      Keep TITLE.say and SUMMARY.say to 2 sentences and give SUMMARY a `checks: [...]` list. Silent
      stretches are fast-forwarded automatically; paste the printed CHAPTERS list into the ticket comment.
+     With a voice there are no step cards: `step.say` plays over the live page, so it says what we're
+     about to do, and pointing ("these rows") goes in `sayAfter` or a beat, where the red shape appears.
    - Narration text goes to Microsoft's speech service (edge-tts): ticket ids and feature descriptions
      only — never customer names, emails or record data.
    - Each narrated run also writes `videos/srt/<video name>.srt`. A re-take is `<TICKET>-2.mp4` and never

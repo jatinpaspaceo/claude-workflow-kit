@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.5.0 — 2026-10-23
+
+### Changed
+- `scripts/record-verification-headless.js` — a drawn red shape (circle for small things, rounded square
+  otherwise, with a draw-in animation) marks what the voice talks about, instead of a thin outline; used by
+  beats and `highlightRows`. With a voice there are no step cards: the step's sentence plays over the live
+  page and the badge shows "Step N of M — <title>". The title and ✔ summary cards stay; `--no-audio` keeps
+  the step cards
+- `ticket-workflow` step 13 and the writing guide: `step.say` says what's about to happen; pointing goes in
+  `sayAfter` or a beat
+
 ## 1.4.0 — 2026-10-14
 
 ### Changed

@@ -255,17 +255,44 @@ const CURSOR_JS = `
       requestAnimationFrame(function () { r.style.transform = 'scale(2.2)'; r.style.opacity = '0'; });
       setTimeout(function () { r.remove(); }, 600);
     },
-    mark: function (e) {   // amber outline + spotlight on the beat's element; the previous one is cleared
-      document.querySelectorAll('[data-vh]').forEach(function (o) {
-        o.style.outline = o.getAttribute('data-vh'); o.removeAttribute('data-vh');
+    mark: function (e) {   // drawn shape + spotlight on the beat's element; the previous one is cleared
+      document.querySelectorAll('[data-vhs]').forEach(function (o) {
         o.style.boxShadow = o.getAttribute('data-vhs') || ''; o.removeAttribute('data-vhs');
       });
+      window.__P.annotate(e ? [e] : []);
       if (!e) return;
-      e.setAttribute('data-vh', e.style.outline || '');
       e.setAttribute('data-vhs', e.style.boxShadow || '');
-      e.style.outline = '3px solid #efad52'; e.style.outlineOffset = '2px';
-      // spotlight (1.4.0): dim the rest of the page a little so the eye lands on this element
+      // spotlight (2.6.0): dim the rest of the page a little so the eye lands on this element
       e.style.boxShadow = '0 0 0 100vmax rgba(0,0,0,.28)';
+    },
+    // Drawn annotation (1.5.0): a red shape drawn OVER each element, like a reviewer's pen — a circle
+    // for small, square-ish things (icons, buttons, badges), a rounded square for rows, fields and
+    // areas. A separate fixed overlay, so a parent's overflow can't clip it; it follows the element if
+    // the page moves. annotate([]) clears.
+    annotate: function (list) {
+      document.querySelectorAll('.__va').forEach(function (a) { a.remove(); });
+      (list || []).forEach(function (e) {
+        if (!e || !e.getBoundingClientRect) return;
+        var a = document.createElement('div'); a.className = '__va';
+        var r0 = e.getBoundingClientRect();
+        var round = r0.width <= 160 && r0.height <= 160 && r0.width / Math.max(r0.height, 1) < 2.2;
+        var pad = round ? 12 : 8;
+        a.style.cssText = 'position:fixed;z-index:2147483644;pointer-events:none;box-sizing:border-box;'
+          + 'border:4px solid #E53935;box-shadow:0 0 0 2px rgba(255,255,255,.75),0 2px 8px rgba(0,0,0,.35);'
+          + 'border-radius:' + (round ? '50%' : '10px') + ';opacity:0;transform:scale(1.25);'
+          + 'transition:opacity .35s ease-out,transform .35s ease-out;';
+        document.body.appendChild(a);
+        var place = function () {
+          if (!a.isConnected) return;
+          if (!e.isConnected) { a.remove(); return; }
+          var r = e.getBoundingClientRect();
+          a.style.left = (r.left - pad) + 'px'; a.style.top = (r.top - pad) + 'px';
+          a.style.width = (r.width + pad * 2) + 'px'; a.style.height = (r.height + pad * 2) + 'px';
+          requestAnimationFrame(place);
+        };
+        place();
+        requestAnimationFrame(function () { a.style.opacity = '1'; a.style.transform = 'scale(1)'; });
+      });
     },
   };
   // "Step 2 of 3" badge (1.4.0), top right; kept in sessionStorage so it survives page loads
@@ -277,7 +304,8 @@ const CURSOR_JS = `
       b = document.createElement('div'); b.id = '__vs';
       b.style.cssText = 'position:fixed;top:14px;right:18px;z-index:2147483645;pointer-events:none;'
         + 'background:rgba(26,26,26,.82);color:#efad52;font:600 15px Arial,Helvetica,sans-serif;'
-        + 'padding:6px 12px;border-radius:14px;box-shadow:0 2px 6px rgba(0,0,0,.3);';
+        + 'padding:6px 12px;border-radius:14px;box-shadow:0 2px 6px rgba(0,0,0,.3);'
+        + 'max-width:46vw;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;';
       document.body.appendChild(b);
     }
     if (b) b.textContent = t;
@@ -289,14 +317,14 @@ const CURSOR_JS = `
 })();
 `;
 
-/** Outline detail-view rows whose <th> label matches, so the eye lands on them. */
+/** Mark detail-view rows whose <th> label matches: a light tint plus a drawn red shape (1.5.0). */
 const highlightRows = (labels) => `
-Array.from(document.querySelectorAll('.detail-view tr')).forEach(function (r) {
-  var th = r.querySelector('th'); if (!th) return;
-  if (${JSON.stringify(labels)}.indexOf(th.textContent.trim()) !== -1) {
-    r.style.outline = '2px solid #efad52'; r.style.background = '#fff8ec';
-  }
+var __rows = Array.from(document.querySelectorAll('.detail-view tr')).filter(function (r) {
+  var th = r.querySelector('th'); return th && ${JSON.stringify(labels)}.indexOf(th.textContent.trim()) !== -1;
 });
+__rows.forEach(function (r) { r.style.background = '#fff8ec'; });
+if (window.__P && window.__P.annotate) window.__P.annotate(__rows);
+else __rows.forEach(function (r) { r.style.outline = '2px solid #E53935'; });
 `;
 
 // ---------------------------------------------------------------------------
@@ -319,7 +347,12 @@ Array.from(document.querySelectorAll('.detail-view tr')).forEach(function (r) {
 //       - ✖ "This video verifies ticket PROJ 1234. It was verified on staging."
 //         ✔ "Okay, this is ticket PROJ 1234. I'm checking it on staging."
 //       TITLE.say     what was asked for, who asked / why, where it is being verified.
-//       step.say      what we are about to do, and what the viewer should expect to see.
+//       step.say      what we are about to do, and what the viewer should expect to see. Spoken over
+//                     the live page at the start of the step (1.5.0: no step card when narrated;
+//                     the step title goes in the top-right badge instead).
+//                     Don't point at things here ("these two rows"): the highlight from `show` /
+//                     beats comes AFTER this sentence. Say "Let's check the saved details", then
+//                     point in sayAfter or a beat.
 //       step.sayAfter what is on screen right now: name the highlighted thing, say what it
 //                     proves, and mention the before-state for a bug fix.
 //       SUMMARY.say   each thing that was proven, and that nothing was left behind.
@@ -684,10 +717,25 @@ function writeAss(placed, cursorLog = []) {
         try { navigator.geolocation.getCurrentPosition = function () {}; } catch (e) { /* noop */ }
       });
     }
-    await card(step);
-    await uncard();
-    await page.evaluate((t) => window.__S && window.__S.set(t),
-      `Step ${STEPS.indexOf(step) + 1} of ${STEPS.length}`);
+    // Step cards (1.5.0): with a voice, the step's sentence plays over the LIVE page and the badge carries
+    // the step title — a centre card would only repeat the subtitle and hide the app. Without a voice
+    // (--no-audio) the card is the only explanation, so it stays.
+    const n = STEPS.indexOf(step) + 1;
+    const title = String(step.heading || '').replace(/<[^>]+>/g, '').replace(/&mdash;/g, '—')
+      .replace(/&[a-z]+;/g, ' ').replace(/\s+/g, ' ').trim().replace(/^Step\s*\d+\s*[—–-]\s*/i, '');
+    await page.evaluate(() => window.__P && window.__P.mark(null));   // nothing carried over from the last step
+    if (NARRATE) {
+      await uncard();   // the title card (or nothing): with no step card, nothing else removes it
+      await page.evaluate((t) => window.__S && window.__S.set(t),
+        `Step ${n} of ${STEPS.length}${title ? ` — ${title}` : ''}`);
+      if (t0 === null) t0 = Date.now();
+      chapters.push({ atMs: Date.now() - t0, title: `Step ${n}${title ? ` — ${title}` : ''}` });
+      if (step.voice) await page.waitForTimeout(speak(step.voice));
+    } else {
+      await card(step);
+      await uncard();
+      await page.evaluate((t) => window.__S && window.__S.set(t), `Step ${n} of ${STEPS.length}`);
+    }
     if (step.beats) await runBeats(step.beats, `Step ${STEPS.indexOf(step) + 1}`);
     if (step.act) await step.act(page);
     if (step.show) await page.evaluate(step.show);
